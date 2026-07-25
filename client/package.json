@@ -1,6 +1,6 @@
 {
   "name": "@foaf/client",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Shared FOAF auth, contacts, ledger, adapters, and React Native UI",
   "main": "src/index.ts",

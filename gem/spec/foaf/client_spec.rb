@@ -61,7 +61,12 @@ RSpec.describe Foaf::LedgerClient do
     )
     request = adapter.requests.first
 
-    expect(result).to eq("ok" => true, "data" => { "id" => "pending-1" })
+    expect(result).to eq(
+      "ok" => true,
+      "status" => 201,
+      "body" => '{"id":"pending-1"}',
+      "data" => { "id" => "pending-1" }
+    )
     expect(signed).to eq(["0xsender", request.fetch(:body)])
     expect(request.dig(:headers, "X-Signature")).to eq("0xsignature")
     expect(JSON.parse(request.fetch(:body)).fetch("value")).to eq("6.8")
@@ -78,6 +83,7 @@ RSpec.describe Foaf::LedgerClient do
     expect(result).to eq(
       "ok" => false,
       "status" => 422,
+      "body" => '{"error":"InsufficientCapacity"}',
       "error" => '{"error":"InsufficientCapacity"}'
     )
   end
@@ -99,8 +105,59 @@ RSpec.describe Foaf::LedgerClient do
     expect(result).to eq(
       "ok" => false,
       "status" => 401,
+      "body" => '{"error":"Invalid signature"}',
       "error" => '{"error":"Invalid signature"}'
     )
+  end
+
+  it "sends the create idempotency key in the signed wire body" do
+    adapter = RecordingAdapter.new(
+      Foaf::HttpResponse.new(status: 201, body: '{"id":"pending-1"}')
+    )
+    signed_payload = nil
+    client = described_class.new(
+      base_url: base_url,
+      http_adapter: adapter,
+      signature_provider: lambda do |_address, payload|
+        signed_payload = payload
+        "0xsignature"
+      end
+    )
+
+    client.create_pending_transfer(
+      network_address: "0xnetwork",
+      from_address: "0xsender",
+      to_address: "0xreceiver",
+      value: "5",
+      idempotency_key: "consumer:transfer:42"
+    )
+
+    expect(JSON.parse(signed_payload).fetch("idempotency_key")).to eq("consumer:transfer:42")
+    expect(signed_payload).to eq(adapter.requests.first.fetch(:body))
+  end
+
+  it "preserves status and body on reconciliation reads" do
+    adapter = RecordingAdapter.new(
+      Foaf::HttpResponse.new(status: 404, body: '{"error":"not found"}'),
+      Foaf::HttpResponse.new(status: 200, body: '{"id":9,"status":"confirmed"}')
+    )
+    client = described_class.new(base_url: base_url, http_adapter: adapter)
+
+    missing = client.pending_transfer_by_idempotency_key(idempotency_key: "missing")
+    found = client.pending_transfer(pending_transfer_id: 9)
+
+    expect(missing).to include(
+      "ok" => false,
+      "status" => 404,
+      "body" => '{"error":"not found"}'
+    )
+    expect(found).to include(
+      "ok" => true,
+      "status" => 200,
+      "data" => include("id" => 9, "status" => "confirmed")
+    )
+    expect(adapter.requests.first.fetch(:body)).to be_nil
+    expect(adapter.requests.first.fetch(:uri).query).to eq("idempotency_key=missing")
   end
 
   it "keeps reads nil-on-failure" do

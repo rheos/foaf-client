@@ -70,7 +70,7 @@ module Foaf
 
     def create_pending_transfer(network_address:, from_address:, to_address:,
                                 value:, extra_data: nil, max_fee: nil,
-                                fee_payer: nil, path: nil)
+                                fee_payer: nil, path: nil, idempotency_key: nil)
       body = {
         network_address: network_address,
         from_address: from_address,
@@ -81,12 +81,30 @@ module Foaf
       body[:max_fee] = max_fee unless max_fee.nil?
       body[:fee_payer] = fee_payer unless fee_payer.nil?
       body[:path] = path unless path.nil?
+      body[:idempotency_key] = idempotency_key unless idempotency_key.nil?
 
       strict_request(
         :post,
         "/api/v1/pending_transfers",
         body,
         signer_address: from_address
+      )
+    end
+
+    def pending_transfer(pending_transfer_id:)
+      strict_request(
+        :get,
+        "/api/v1/pending_transfers/#{segment(pending_transfer_id)}",
+        nil
+      )
+    end
+
+    def pending_transfer_by_idempotency_key(idempotency_key:)
+      strict_request(
+        :get,
+        "/api/v1/pending_transfers/by_idempotency_key",
+        nil,
+        params: { idempotency_key: idempotency_key }
       )
     end
 
@@ -168,16 +186,32 @@ module Foaf
       nil
     end
 
-    def strict_request(method, path, body, signer_address: nil)
-      response = perform(method, path, body, signer_address: signer_address)
+    def strict_request(method, path, body, params: {}, signer_address: nil)
+      response = perform(
+        method,
+        path,
+        body,
+        params: params,
+        signer_address: signer_address
+      )
       if success?(response.status)
-        { "ok" => true, "data" => parse_body(response.body) }
+        {
+          "ok" => true,
+          "status" => response.status,
+          "body" => response.body,
+          "data" => parse_body(response.body)
+        }
       else
-        { "ok" => false, "status" => response.status, "error" => response.body }
+        {
+          "ok" => false,
+          "status" => response.status,
+          "body" => response.body,
+          "error" => response.body
+        }
       end
     rescue StandardError => e
       log("#{method.to_s.upcase}(strict) #{path}", e)
-      { "ok" => false, "status" => 0, "error" => e.message }
+      { "ok" => false, "status" => 0, "body" => nil, "error" => e.message }
     end
 
     def perform(method, path, body, params: {}, signer_address: nil)

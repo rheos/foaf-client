@@ -7,7 +7,7 @@ Consumers pin the repository tag:
 ```ruby
 gem "foaf_client",
     git: "https://github.com/rheos/foaf-client.git",
-    tag: "v0.1.0",
+    tag: "v0.1.1",
     glob: "gem/*.gemspec"
 ```
 

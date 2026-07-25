@@ -67,15 +67,121 @@ describe('FoafLedgerClient', () => {
       fromAddress: 'sender',
       toAddress: 'receiver',
       value: '6.80',
+      idempotencyKey: 'client:payment:42',
     });
     const init = fetcher.mock.calls[0][1] as RequestInit;
 
     expect(signed).toEqual([init.body]);
     expect((init.headers as Record<string, string>)['X-Signature']).toBe('0xsigned');
+    expect(JSON.parse(init.body as string).idempotency_key).toBe('client:payment:42');
     expect(result).toEqual({
       ok: false,
       status: 422,
+      body: '{"error":"InsufficientCapacity"}',
+      outcome: 'rejected',
       error: '{"error":"InsufficientCapacity"}',
+    });
+  });
+
+  it('preserves status and raw body for successful mutations', async () => {
+    const fetcher = jest.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        response(201, { id: 'pending-1', status: 'pending' }),
+    );
+    const client = new FoafLedgerClient({
+      baseUrl: 'https://foaf.test',
+      fetch: fetcher as unknown as typeof fetch,
+    });
+
+    await expect(client.createPendingTransfer({
+      networkAddress: 'network',
+      fromAddress: 'sender',
+      toAddress: 'receiver',
+      value: '1',
+      idempotencyKey: 'client:payment:43',
+    })).resolves.toEqual({
+      ok: true,
+      status: 201,
+      body: '{"id":"pending-1","status":"pending"}',
+      outcome: 'success',
+      data: { id: 'pending-1', status: 'pending' },
+    });
+  });
+
+  it('signs confirm and reject wire bytes as the receiver', async () => {
+    const signed: Array<[string, string]> = [];
+    const fetcher = jest.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        response(200, { id: 'pending-1', status: 'confirmed', operation: 9 }),
+    );
+    const client = new FoafLedgerClient({
+      baseUrl: 'https://foaf.test',
+      fetch: fetcher as unknown as typeof fetch,
+      signatureProvider: (address, body) => {
+        signed.push([address, body]);
+        return '0xsigned';
+      },
+    });
+
+    await client.confirmTransfer('pending-1', 'receiver');
+    await client.rejectTransfer('pending-2', 'receiver', 'declined');
+
+    expect(signed).toEqual([
+      ['receiver', '{}'],
+      ['receiver', '{"reason":"declined"}'],
+    ]);
+    expect(signed[0][1]).toBe(fetcher.mock.calls[0][1]?.body);
+    expect(signed[1][1]).toBe(fetcher.mock.calls[1][1]?.body);
+  });
+
+  it('uses strict status/body results for pending-transfer reconciliation reads', async () => {
+    const fetcher = jest.fn()
+      .mockResolvedValueOnce(response(404, '{"error":"not found"}'))
+      .mockResolvedValueOnce(response(200, {
+        id: 'pending-1',
+        idempotencyKey: 'client:payment:44',
+        status: 'confirmed',
+        operation: 12,
+      }));
+    const client = new FoafLedgerClient({
+      baseUrl: 'https://foaf.test',
+      fetch: fetcher as unknown as typeof fetch,
+    });
+
+    await expect(
+      client.pendingTransferByIdempotencyKey('client:payment:44'),
+    ).resolves.toMatchObject({
+      ok: false,
+      status: 404,
+      outcome: 'rejected',
+      body: '{"error":"not found"}',
+    });
+    await expect(client.pendingTransfer('pending-1')).resolves.toMatchObject({
+      ok: true,
+      status: 200,
+      outcome: 'success',
+      data: { status: 'confirmed', operation: 12 },
+    });
+    expect(fetcher.mock.calls[0][0]).toContain(
+      'idempotency_key=client%3Apayment%3A44',
+    );
+  });
+
+  it('classifies transport errors as ambiguous without losing the error', async () => {
+    const fetcher = jest.fn(async () => {
+      throw new Error('network timeout');
+    });
+    const client = new FoafLedgerClient({
+      baseUrl: 'https://foaf.test',
+      fetch: fetcher as unknown as typeof fetch,
+    });
+
+    await expect(client.confirmTransfer('pending-1', 'receiver')).resolves.toEqual({
+      ok: false,
+      status: 0,
+      body: null,
+      outcome: 'ambiguous',
+      error: 'network timeout',
     });
   });
 });

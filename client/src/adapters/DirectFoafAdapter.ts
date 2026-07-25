@@ -38,26 +38,28 @@ export class DirectFoafAdapter implements CreditLedgerDataSource {
 
   async createTrustline(params: CreateTrustlineInput): Promise<CreditTrustline> {
     if (!params.counterpartyAddress) throw new Error('counterpartyAddress is required');
-    await this.options.client.updateTrustline({
+    const result = await this.options.client.updateTrustline({
       networkAddress: this.options.networkAddress,
       creditorAddress: this.options.viewerAddress,
       debtorAddress: params.counterpartyAddress,
       creditlineGiven: String(params.creditlineGiven),
       creditlineReceived: String(params.creditlineReceived),
     });
+    if (!result.ok) throw new Error(result.error);
     return this.getTrustline(params.counterpartyAddress);
   }
 
   async updateTrustline(id: LedgerId, params: UpdateTrustlineInput): Promise<CreditTrustline> {
     const current = await this.getTrustline(id);
     const counterpartyAddress = current.counterpartyAddress ?? String(id);
-    await this.options.client.updateTrustline({
+    const result = await this.options.client.updateTrustline({
       networkAddress: this.options.networkAddress,
       creditorAddress: this.options.viewerAddress,
       debtorAddress: counterpartyAddress,
       creditlineGiven: String(params.creditlineGiven ?? current.creditlineGiven),
       creditlineReceived: String(params.creditlineReceived ?? current.creditlineReceived),
     });
+    if (!result.ok) throw new Error(result.error);
     return this.getTrustline(id);
   }
 
@@ -83,6 +85,7 @@ export class DirectFoafAdapter implements CreditLedgerDataSource {
   }
 
   async makeDirectPayment(id: LedgerId, params: PaymentInput): Promise<CreditPayment> {
+    if (!params.idempotencyKey) throw new Error('idempotencyKey is required for a direct FOAF payment');
     const trustline = await this.getTrustline(id);
     const result = await this.options.client.createPendingTransfer({
       networkAddress: this.options.networkAddress,
@@ -90,6 +93,7 @@ export class DirectFoafAdapter implements CreditLedgerDataSource {
       toAddress: trustline.counterpartyAddress ?? String(id),
       value: String(params.amount),
       extraData: params.memo ? { memo: params.memo } : undefined,
+      idempotencyKey: params.idempotencyKey,
     });
     if (!result.ok) throw new Error(result.error);
     return { id: result.data.id, amount: params.amount, status: result.data.status, raw: result.data };
@@ -108,6 +112,7 @@ export class DirectFoafAdapter implements CreditLedgerDataSource {
   async executePathPayment(
     params: PaymentInput & { path: LedgerId[] },
   ): Promise<CreditPayment> {
+    if (!params.idempotencyKey) throw new Error('idempotencyKey is required for a direct FOAF payment');
     const lastPathEntry = params.path[params.path.length - 1];
     const toAddress = params.toAddress ?? String(params.toId ?? lastPathEntry ?? '');
     const result = await this.options.client.createPendingTransfer({
@@ -117,6 +122,7 @@ export class DirectFoafAdapter implements CreditLedgerDataSource {
       value: String(params.amount),
       path: params.path.map(String),
       extraData: params.memo ? { memo: params.memo } : undefined,
+      idempotencyKey: params.idempotencyKey,
     });
     if (!result.ok) throw new Error(result.error);
     return { id: result.data.id, amount: params.amount, status: result.data.status, raw: result.data };

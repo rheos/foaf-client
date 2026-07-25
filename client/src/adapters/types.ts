@@ -49,6 +49,8 @@ export interface UpdateTrustlineInput {
 export interface PaymentInput {
   amount: number;
   memo?: string;
+  /** Stable per user intent; required by DirectFoafAdapter at runtime. */
+  idempotencyKey?: string;
   toId?: LedgerId;
   toAddress?: string;
   [key: string]: unknown;

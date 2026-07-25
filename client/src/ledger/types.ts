@@ -12,6 +12,11 @@ export interface FoafCapacityResult {
 
 export interface FoafPendingTransfer {
   id: string;
+  idempotencyKey?: string;
+  from?: string;
+  to?: string;
+  value?: string | number;
+  operation?: string | number | null;
   status: 'pending' | 'confirmed' | 'rejected' | 'cancelled';
   [key: string]: unknown;
 }
@@ -48,8 +53,20 @@ export interface FoafLedgerClientOptions {
 }
 
 export type FoafMutationResult<T> =
-  | { ok: true; data: T }
-  | { ok: false; status: number; error: string };
+  | {
+      ok: true;
+      status: number;
+      body: string;
+      outcome: 'success';
+      data: T;
+    }
+  | {
+      ok: false;
+      status: number;
+      body: string | null;
+      outcome: 'rejected' | 'ambiguous';
+      error: string;
+    };
 
 export interface TrustlineRow {
   counterPartyAddress?: string;

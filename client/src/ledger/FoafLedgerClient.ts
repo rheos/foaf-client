@@ -45,14 +45,14 @@ export class FoafLedgerClient {
     debtorAddress: string;
     creditlineGiven: string;
     creditlineReceived: string;
-  }): Promise<unknown> {
+  }): Promise<FoafMutationResult<unknown>> {
     const body = JSON.stringify({
       creditor_address: params.creditorAddress,
       debtor_address: params.debtorAddress,
       creditline_given: params.creditlineGiven,
       creditline_received: params.creditlineReceived,
     });
-    return this.read(
+    return this.mutate(
       `/api/v1/networks/${encodeURIComponent(params.networkAddress)}/trustlines/update`,
       await this.signedRequest('POST', body, params.creditorAddress),
     );
@@ -83,6 +83,7 @@ export class FoafLedgerClient {
     maxFee?: string;
     feePayer?: string;
     path?: string[];
+    idempotencyKey?: string;
   }): Promise<FoafMutationResult<FoafPendingTransfer>> {
     const payload: Record<string, unknown> = {
       network_address: params.networkAddress,
@@ -94,10 +95,32 @@ export class FoafLedgerClient {
     if (params.maxFee !== undefined) payload.max_fee = params.maxFee;
     if (params.feePayer !== undefined) payload.fee_payer = params.feePayer;
     if (params.path !== undefined) payload.path = params.path;
+    if (params.idempotencyKey !== undefined) payload.idempotency_key = params.idempotencyKey;
     const body = JSON.stringify(payload);
     return this.mutate(
       '/api/v1/pending_transfers',
       await this.signedRequest('POST', body, params.fromAddress),
+    );
+  }
+
+  async pendingTransfer(
+    pendingTransferId: string,
+  ): Promise<FoafMutationResult<FoafPendingTransfer>> {
+    return this.mutate(
+      `/api/v1/pending_transfers/${encodeURIComponent(pendingTransferId)}`,
+      { method: 'GET', headers: this.jsonHeaders() },
+    );
+  }
+
+  async pendingTransferByIdempotencyKey(
+    idempotencyKey: string,
+  ): Promise<FoafMutationResult<FoafPendingTransfer>> {
+    return this.mutate(
+      this.withQuery(
+        '/api/v1/pending_transfers/by_idempotency_key',
+        { idempotency_key: idempotencyKey },
+      ),
+      { method: 'GET', headers: this.jsonHeaders() },
     );
   }
 
@@ -169,12 +192,40 @@ export class FoafLedgerClient {
     try {
       const response = await this.fetcher(`${this.baseUrl}${path}`, init);
       const raw = await response.text();
-      if (!response.ok) return { ok: false, status: response.status, error: raw };
-      return { ok: true, data: JSON.parse(raw) as T };
+      if (!response.ok) {
+        return {
+          ok: false,
+          status: response.status,
+          body: raw,
+          outcome: response.status >= 400 && response.status < 500
+            ? 'rejected'
+            : 'ambiguous',
+          error: raw,
+        };
+      }
+      try {
+        return {
+          ok: true,
+          status: response.status,
+          body: raw,
+          outcome: 'success',
+          data: JSON.parse(raw) as T,
+        };
+      } catch {
+        return {
+          ok: false,
+          status: response.status,
+          body: raw,
+          outcome: 'ambiguous',
+          error: 'FOAF returned a successful status with an invalid JSON body',
+        };
+      }
     } catch (error) {
       return {
         ok: false,
         status: 0,
+        body: null,
+        outcome: 'ambiguous',
         error: error instanceof Error ? error.message : String(error),
       };
     }

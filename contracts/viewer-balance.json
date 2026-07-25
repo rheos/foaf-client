@@ -1,0 +1,14 @@
+{
+  "foaf": {
+    "counterParty": "0x0000000000000000000000000000000000000002",
+    "balance": "12.50",
+    "given": "80",
+    "received": "100"
+  },
+  "viewer": {
+    "viewer_balance": "-12.50",
+    "my_credit_limit": "100",
+    "their_credit_limit": "80"
+  }
+}
+

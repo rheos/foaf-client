@@ -1,0 +1,8 @@
+/.bundle/
+/client/coverage/
+/client/node_modules/
+/gem/coverage/
+/gem/pkg/
+/gem/vendor/
+*.gem
+

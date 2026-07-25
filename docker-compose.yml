@@ -1,0 +1,25 @@
+services:
+  gem:
+    build:
+      context: ./gem
+    working_dir: /workspace/gem
+    command: sh -lc "bundle install && bundle exec rspec"
+    environment:
+      BUNDLE_PATH: /bundle
+    volumes:
+      - ./gem:/workspace/gem
+      - ./contracts:/workspace/contracts:ro
+      - foaf_client_bundle:/bundle
+
+  client:
+    image: node:20-bookworm-slim
+    working_dir: /workspace/client
+    command: sh -lc "npm install && npm test -- --runInBand && npm run typecheck"
+    volumes:
+      - ./client:/workspace/client
+      - ./contracts:/workspace/contracts:ro
+      - foaf_client_node_modules:/workspace/client/node_modules
+
+volumes:
+  foaf_client_bundle:
+  foaf_client_node_modules:

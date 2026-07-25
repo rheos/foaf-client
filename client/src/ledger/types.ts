@@ -1,0 +1,69 @@
+export interface FoafNetwork {
+  address: string;
+  decimals: number;
+  name: string;
+  [key: string]: unknown;
+}
+
+export interface FoafCapacityResult {
+  capacity: string;
+  path: string[];
+}
+
+export interface FoafPendingTransfer {
+  id: string;
+  status: 'pending' | 'confirmed' | 'rejected' | 'cancelled';
+  [key: string]: unknown;
+}
+
+export interface FoafConfirmResult {
+  status: 'confirmed';
+  transfer: FoafPendingTransfer;
+  operation: string;
+  totalFees: number;
+}
+
+export interface FoafKeypair {
+  address: string;
+  publicKey: string;
+  privateKey: string;
+  seedPhrase?: string;
+}
+
+export interface StringStorage {
+  getItem(key: string): Promise<string | null>;
+  setItem(key: string, value: string): Promise<void>;
+  removeItem(key: string): Promise<void>;
+}
+
+export type FoafSignatureProvider = (
+  signerAddress: string,
+  exactBody: string,
+) => Promise<string | null> | string | null;
+
+export interface FoafLedgerClientOptions {
+  baseUrl: string;
+  fetch?: typeof globalThis.fetch;
+  signatureProvider?: FoafSignatureProvider;
+}
+
+export type FoafMutationResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; status: number; error: string };
+
+export interface TrustlineRow {
+  counterPartyAddress?: string;
+  counter_party_address?: string;
+  creditlineGiven?: string | number;
+  creditline_given?: string | number;
+  creditlineReceived?: string | number;
+  creditline_received?: string | number;
+  balance?: string | number;
+  [key: string]: unknown;
+}
+
+export interface ViewerBalance {
+  balance: string;
+  creditlineGiven: string;
+  creditlineReceived: string;
+}

@@ -2,19 +2,22 @@
 
 ## Ruby
 
-During local/path-based rollout, consumers use:
+Consumers pin the repository tag:
 
 ```ruby
-gem "foaf_client", path: ENV.fetch(
-  "FOAF_CLIENT_GEM_PATH",
-  File.expand_path("../../foaf-client/gem", __dir__)
-)
+gem "foaf_client",
+    git: "https://github.com/rheos/foaf-client.git",
+    tag: "v0.1.0",
+    glob: "gem/*.gemspec"
 ```
 
-Docker builds supply the repository as the named BuildKit context
-`foaf_client` and copy `gem/` to `/foaf-client/gem`. A deployment host must
-therefore check out `foaf-client` at the sibling path expected by its compose
-file until the gem is moved to a Git source or private registry.
+The `glob` option points Bundler at the gemspec inside this repository’s
+`gem/` directory. Docker images need `git` available while running
+`bundle install`; deployment hosts do not need a sibling checkout.
+
+For local SDK development, a consumer may temporarily replace the Git options
+with `path: "/absolute/path/to/foaf-client/gem"` without changing the package
+itself.
 
 The package deliberately owns `Foaf::LedgerClient`, `Foaf::ClientConfig`, and
 `Foaf::LedgerSigner`. It does not define `Foaf::Client`, `Foaf::Config`, or
